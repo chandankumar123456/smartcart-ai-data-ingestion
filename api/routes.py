@@ -1,7 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,8 +30,8 @@ class IngestStartRequest(BaseModel):
 
 class SearchIngestRequest(BaseModel):
     query: str
-    page_size: int = 30
-    max_pages: int = 2
+    page_size: int = Field(default=30, ge=1, le=100)
+    max_pages: int = Field(default=2, ge=1)
 
 
 def _job_to_dict(job: IngestionJob) -> dict:
@@ -158,11 +158,11 @@ async def search_and_ingest_products(
     total_duplicates = 0
     storage_stats = {"inserted": 0, "updated": 0, "skipped": 0, "errors": 0}
 
-    for page in range(1, max(1, body.max_pages) + 1):
+    for page in range(1, body.max_pages + 1):
         raw_products = await extraction_agent.extract_by_query(
             query=query_text,
             page=page,
-            page_size=max(1, min(body.page_size, 100)),
+            page_size=body.page_size,
         )
         if not raw_products:
             break

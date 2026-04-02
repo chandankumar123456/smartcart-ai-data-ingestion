@@ -115,3 +115,13 @@ def test_products_search_ingest(client, mocker):
 def test_products_search_ingest_empty_query(client):
     response = client.post("/products/search-ingest", json={"query": "   "})
     assert response.status_code == 400
+
+
+def test_products_search_ingest_invalid_page_size(client):
+    response = client.post("/products/search-ingest", json={"query": "milk", "page_size": 0})
+    assert response.status_code == 422
+
+
+def test_products_search_ingest_invalid_max_pages(client):
+    response = client.post("/products/search-ingest", json={"query": "milk", "max_pages": 0})
+    assert response.status_code == 422
