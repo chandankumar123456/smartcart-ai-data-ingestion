@@ -97,6 +97,12 @@ class CleaningAgent:
         "jams": "Condiments & Sauces",
     }
 
+    def parse_tag(self, tag: str, prefix: str = "en:") -> str:
+        """Strip a language prefix (e.g. 'en:') from an Open Food Facts tag and title-case the result."""
+        if tag.startswith(prefix):
+            tag = tag[len(prefix):]
+        return tag.replace("-", " ").title()
+
     def clean_name(self, name: str) -> str:
         """Strip HTML, normalize whitespace, title case."""
         if not name:
@@ -161,7 +167,7 @@ class CleaningAgent:
             image_url = raw.get("image_url") or raw.get("image_front_url") or None
 
             countries = raw.get("countries_tags") or []
-            region = countries[0].replace("en:", "").title() if countries else None
+            region = self.parse_tag(countries[0]) if countries else None
 
             stores = raw.get("stores_tags") or []
             source = stores[0] if stores else raw.get("source", "open_food_facts")

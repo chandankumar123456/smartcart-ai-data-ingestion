@@ -93,6 +93,7 @@ async def append_job_log(session: AsyncSession, job_id: str, message: str) -> No
 
 async def get_all_jobs(session: AsyncSession, limit: int = 50) -> list[IngestionJob]:
     result = await session.execute(
+        # nullslast ensures jobs without a start time appear after already-started jobs
         select(IngestionJob).order_by(IngestionJob.started_at.desc().nullslast()).limit(limit)
     )
     return list(result.scalars().all())

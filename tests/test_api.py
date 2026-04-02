@@ -10,10 +10,7 @@ from db.database import get_session
 
 @pytest.fixture(scope="module")
 def test_app():
-    """Create a test FastAPI app with in-memory SQLite."""
-    import os
-    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-
+    """Create a test FastAPI app backed by in-memory SQLite (set via conftest)."""
     from main import app
     return app
 
