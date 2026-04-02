@@ -7,17 +7,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.database import get_session
 from db.models import IngestionJob, Product
+from agents.cleaning_agent import CleaningAgent
+from agents.deduplication_agent import DeduplicationAgent
+from agents.extraction_agent import ExtractionAgent
+from agents.storage_agent import StorageAgent
 from db.operations import get_all_jobs, get_job
 from pipeline.orchestrator import IngestionOrchestrator
 from utils.logger import logger
 
 router = APIRouter()
 orchestrator = IngestionOrchestrator()
+extraction_agent = ExtractionAgent()
+cleaning_agent = CleaningAgent()
+dedup_agent = DeduplicationAgent()
+storage_agent = StorageAgent()
 
 
 class IngestStartRequest(BaseModel):
     source: str = "all"
     categories: list[str] | None = None
+
+
+class SearchIngestRequest(BaseModel):
+    query: str
+    page_size: int = 30
+    max_pages: int = 2
 
 
 def _job_to_dict(job: IngestionJob) -> dict:
@@ -127,6 +141,84 @@ async def list_products(
         }
         for p in products
     ]
+
+
+@router.post("/products/search-ingest")
+async def search_and_ingest_products(
+    body: SearchIngestRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Fetch products for a query, persist to DB, and return matching DB results."""
+    query_text = body.query.strip()
+    if not query_text:
+        raise HTTPException(status_code=400, detail="Query must not be empty")
+
+    total_fetched = 0
+    total_cleaned = 0
+    total_duplicates = 0
+    storage_stats = {"inserted": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+    for page in range(1, max(1, body.max_pages) + 1):
+        raw_products = await extraction_agent.extract_by_query(
+            query=query_text,
+            page=page,
+            page_size=max(1, min(body.page_size, 100)),
+        )
+        if not raw_products:
+            break
+
+        total_fetched += len(raw_products)
+        cleaned = cleaning_agent.clean_batch(raw_products)
+        total_cleaned += len(cleaned)
+
+        for product in cleaned:
+            product["fingerprint"] = dedup_agent.compute_fingerprint(
+                product.get("name", ""),
+                product.get("brand"),
+                product.get("quantity"),
+                product.get("unit"),
+            )
+
+        deduped = dedup_agent.deduplicate_batch(cleaned)
+        total_duplicates += max(0, len(cleaned) - len(deduped))
+
+        batch_stats = await storage_agent.store_batch(session, deduped)
+        storage_stats["inserted"] += batch_stats["inserted"]
+        storage_stats["updated"] += batch_stats["updated"]
+        storage_stats["skipped"] += batch_stats["skipped"]
+        storage_stats["errors"] += batch_stats["errors"]
+        await session.commit()
+
+    db_query = (
+        select(Product)
+        .where(Product.is_active.is_(True), Product.name.ilike(f"%{query_text}%"))
+        .limit(100)
+    )
+    db_result = await session.execute(db_query)
+    products = db_result.scalars().all()
+
+    return {
+        "query": query_text,
+        "fetched": total_fetched,
+        "cleaned": total_cleaned,
+        "duplicates_removed": total_duplicates,
+        "storage": storage_stats,
+        "results": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "brand": p.brand,
+                "category": p.category,
+                "price": p.price,
+                "quantity": p.quantity,
+                "unit": p.unit,
+                "availability": p.availability,
+                "source": p.source,
+                "region": p.region,
+            }
+            for p in products
+        ],
+    }
 
 
 @router.get("/health")

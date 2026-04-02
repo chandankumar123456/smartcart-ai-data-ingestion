@@ -84,3 +84,34 @@ def test_list_products_with_filters(client):
     response = client.get("/products?category=Dairy&limit=10")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+def test_products_search_ingest(client, mocker):
+    mocker.patch(
+        "api.routes.extraction_agent.extract_by_query",
+        return_value=[
+            {
+                "product_name": "Amul Milk 500ml",
+                "brands": "Amul",
+                "categories": "Milk,Dairy",
+                "quantity": "500 ml",
+                "image_url": "https://example.com/img.jpg",
+                "countries_tags": ["en:india"],
+                "stores_tags": ["blinkit"],
+            }
+        ],
+    )
+
+    response = client.post("/products/search-ingest", json={"query": "amul milk"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query"] == "amul milk"
+    assert data["fetched"] >= 1
+    assert "storage" in data
+    assert isinstance(data["results"], list)
+    assert any("Amul Milk" in item["name"] for item in data["results"])
+
+
+def test_products_search_ingest_empty_query(client):
+    response = client.post("/products/search-ingest", json={"query": "   "})
+    assert response.status_code == 400

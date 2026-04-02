@@ -44,6 +44,7 @@ API available at `http://localhost:8000`. Interactive docs at `http://localhost:
 | GET | `/ingest/logs` | Get logs for all jobs |
 | GET | `/ingest/logs/{job_id}` | Get logs for specific job |
 | GET | `/products` | List products (supports `category`, `brand`, `search` filters) |
+| POST | `/products/search-ingest` | Search products online, ingest into DB, then return DB-backed results |
 | GET | `/health` | Health check |
 
 ## Running Tests
